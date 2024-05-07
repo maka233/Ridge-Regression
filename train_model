@@ -1,0 +1,82 @@
+pip install pandas numpy scikit-learn openpyxl
+
+import pandas as pd  
+import numpy as np  
+from sklearn.linear_model import Ridge  
+from sklearn.model_selection import train_test_split, GridSearchCV  
+from sklearn.metrics import mean_squared_error  
+from sklearn.preprocessing import StandardScaler  
+  
+# 读取Excel数据  
+df = pd.read_excel('./2010-2021面板（熵权）.xlsx', engine='openpyxl')  # 替换为你的Excel文件名  
+  
+# 分离自变量和因变量  
+y = pd.to_numeric(df['CE'], errors='coerce')  # 尝试转换为数值，无法转换的设为 NaN  
+X_old = df.drop('CE', axis=1) 
+X_old = X_old.drop('province',axis = 1)
+X_old = X_old.drop('year',axis = 1)
+X = X_old.apply(pd.to_numeric, errors='coerce') 
+## 对自变量进行转化，可选
+X['D'] = X['D'] * 100 
+X['E'] = X['E'] * 100
+#X    ## 查看自变量
+
+# 取对数
+X_log = X.apply(np.log)  
+y_log = np.log(y)  
+  
+# 输出结果检查  
+print(X_log.head())  
+print(y_log.head())
+
+# 数据预处理：标准化（可选，但通常有助于模型性能）  
+scaler = StandardScaler()  
+X_scaled = scaler.fit_transform(X_log)  
+X_scaled
+
+# 划分训练集和测试集  
+X_train, X_test, y_train, y_test = train_test_split(X_log, y_log, test_size=0.4, random_state=33)  
+  
+# 初始化岭回归模型  
+ridge = Ridge(alpha=1.0)  # alpha是正则化强度，初始值可以随意设置，后面会进行调优  
+  
+# 拟合模型  
+ridge.fit(X_train, y_train)  
+  
+# 预测测试集  
+y_pred = ridge.predict(X_test)  
+  
+# 评估模型  
+mse = mean_squared_error(y_test, y_pred)  
+print(f'Mean Squared Error: {mse}')  
+
+# 调试和修改方案  
+# 1. 处理缺失值：如果数据中有缺失值，可以使用填充（如均值填充、中位数填充、插值等）或删除含有缺失值的行。  
+# 2. 异常值处理：检查并处理异常值，可以使用IQR方法或Z-score方法等。  
+# 3. 特征选择：通过相关性分析或特征重要性评估来选择对预测碳排放最重要的特征。  
+# 4. 超参数调优：使用GridSearchCV或RandomizedSearchCV来寻找最优的正则化参数alpha。  
+# 5. 交叉验证：使用交叉验证来评估模型的泛化能力，并避免过拟合。  
+# 6. 考虑面板数据的特性：如果面板数据的特性很重要（如个体效应、时间效应），可能需要使用更复杂的模型，如固定效应或随机效应模型。  
+  
+# 超参数调优示例  
+# 定义要搜索的alpha值范围  
+alpha_values = np.logspace(-4, 2, 50)  
+  
+# 创建岭回归模型实例和参数网格  
+ridge = Ridge()  
+param_grid = {'alpha': alpha_values}  
+  
+# 使用GridSearchCV进行超参数搜索  
+grid_search = GridSearchCV(ridge, param_grid, cv=5, scoring='neg_mean_squared_error')  
+grid_search.fit(X_train, y_train)  
+  
+# 输出最佳参数和对应的得分  
+best_alpha = grid_search.best_params_['alpha']  
+best_score = -grid_search.best_score_  # 注意GridSearchCV返回的score是负的MSE，所以取反  
+print(f'Best alpha: {best_alpha}, Best Score: {best_score}')  
+  
+# 使用最佳参数重新拟合模型  
+best_ridge = grid_search.best_estimator_  
+y_pred_best = best_ridge.predict(X_test)  
+mse_best = mean_squared_error(y_test, y_pred_best)  
+print(f'Mean Squared Error with best alpha: {mse_best}')
